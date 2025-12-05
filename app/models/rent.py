@@ -2,6 +2,7 @@ from typing import Optional
 from sqlmodel import Field, Relationship, SQLModel
 from datetime import datetime
 
+
 class Rent(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     book_id: int = Field(foreign_key="book.id")

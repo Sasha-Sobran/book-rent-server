@@ -1,43 +1,35 @@
 from fastapi import FastAPI
-from sqlmodel import SQLModel, Session
+from sqlmodel import SQLModel
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.models.genre import Genre
-from app.models.category import Category
-from app.schemas.category_schemas import CategoryCreate
-from app.schemas.genre_schemas import GenreCreate
-from database import engine
-
-db = Session(engine)
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def include_routers():
+    from app.user.router import user_router
+    from app.admin.router import admin_router
+    from app.common.routers import common_router
+
+    app.include_router(user_router)
+    app.include_router(admin_router)
+    app.include_router(common_router)
+
+
 def create_tables():
     from app import models
+    from database import engine
 
     SQLModel.metadata.create_all(engine)
 
 
 create_tables()
-
-
-@app.post("/create_genre")
-def create_genre(genre: GenreCreate):
-    db.add(Genre(name=genre.name))
-    db.commit()
-    return genre
-
-@app.get("/get_genres")
-def get_genres():
-    genres = db.query(Genre).all()
-    return genres
-
-@app.post("/create_category")
-def create_category(category: CategoryCreate):
-    db.add(Category(name=category.name))
-    db.commit()
-    return category
-
-@app.get("/get_categories")
-def get_categories():
-    categories = db.query(Category).all()
-    return categories
+include_routers()
