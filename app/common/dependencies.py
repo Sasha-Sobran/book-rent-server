@@ -1,0 +1,73 @@
+from typing import Annotated
+from fastapi import Depends, HTTPException, Header, status
+from sqlmodel import Session
+from fastapi.security import OAuth2PasswordBearer
+
+from app.auth.service import decode_jwt_token
+from app.common.exceptions import InvalidJWTTokenException
+from database import engine
+
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
+
+
+async def get_db_session() -> Session:
+    with Session(engine) as session:
+        yield session
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
+    try:
+        payload = decode_jwt_token(token)
+        if payload is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate user",
+            )
+        user_id: int = int(payload.user_id)
+        role_name: str = payload.role_name
+        if not role_name or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate user",
+            )
+        return {"user_id": user_id, "role_name": role_name}
+    except InvalidJWTTokenException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+
+UserDep = Annotated[dict, Depends(get_current_user)]
+
+
+def require_admin(user: UserDep):
+    if not user.get("role_name") == "admin" or not user.get("role_name") == "root":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to access this resource",
+        )
+    return user
+
+
+def require_librarian(user: UserDep):
+    if not user.get("role_name") == "librarian" or not user.get("role_name") == "root" or not user.get("role_name") == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to access this resource",
+        )
+    return user
+
+
+def require_root(user: UserDep):
+    if not user.get("role_name") == "root":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to access this resource",
+        )
+    return user
+
+
+AdminUserDep = Annotated[dict, Depends(require_admin)]
+RootUserDep = Annotated[dict, Depends(require_root)]
+SessionDep = Annotated[Session, Depends(get_db_session)]
