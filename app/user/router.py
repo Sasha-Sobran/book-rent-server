@@ -20,9 +20,7 @@ user_router = APIRouter(prefix="/users", tags=["users"])
 
 @user_router.get("/self/", response_model=UserSelfResponse)
 async def get_self_route(session: SessionDep, user: UserDep):
-    db_user = (
-        await get_object_or_404(session=session, model=User, id=user["user_id"])
-    )
+    db_user = await get_object_or_404(session=session, model=User, id=user["user_id"])
 
     return UserSelfResponse(
         name=db_user.name,

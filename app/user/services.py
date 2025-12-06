@@ -14,12 +14,21 @@ from app.user.schemas import UserLoginResponse
 
 
 async def create_user(
-    session: get_db_session, email: str, password: str, role_id: int, name: str, surname: str
+    session: get_db_session,
+    email: str,
+    password: str,
+    role_id: int,
+    name: str,
+    surname: str,
 ) -> User | None:
     from app.auth.service import hash_password
 
     user = User(
-        email=email, password=hash_password(password), role_id=role_id, name=name, surname=surname
+        email=email,
+        password=hash_password(password),
+        role_id=role_id,
+        name=name,
+        surname=surname,
     )
     created_user = create_object(session, model=User, **user.model_dump())
     return created_user

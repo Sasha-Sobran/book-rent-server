@@ -42,6 +42,7 @@ class TokenObtainByRefreshResponse(BaseModel):
 class UserSelfResponse(BaseModel):
     user_id: int
     name: str
+    surname: str
     email: str
     phone_number: None | str
     role_name: str

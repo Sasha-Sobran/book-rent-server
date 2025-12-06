@@ -42,7 +42,7 @@ UserDep = Annotated[dict, Depends(get_current_user)]
 
 
 def require_admin(user: UserDep):
-    if not user.get("role_name") == "admin" or not user.get("role_name") == "root":
+    if user.get("role_name") not in ["admin", "root"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not allowed to access this resource",
@@ -51,7 +51,7 @@ def require_admin(user: UserDep):
 
 
 def require_librarian(user: UserDep):
-    if not user.get("role_name") == "librarian" or not user.get("role_name") == "root" or not user.get("role_name") == "admin":
+    if user.get("role_name") not in ["librarian", "admin", "root"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not allowed to access this resource",
@@ -60,7 +60,7 @@ def require_librarian(user: UserDep):
 
 
 def require_root(user: UserDep):
-    if not user.get("role_name") == "root":
+    if user.get("role_name") != "root":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not allowed to access this resource",

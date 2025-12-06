@@ -1,6 +1,5 @@
 from datetime import UTC, datetime, timedelta
 from app.common.controllers import get_object_or_404
-from uuid import UUID
 
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
@@ -17,7 +16,9 @@ settings = Settings()
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def create_jwt_token(user_id: UUID, token_type: JWTTokenType, role_name: str) -> str:
+def create_jwt_token(
+    user_id: int | str, token_type: JWTTokenType, role_name: str
+) -> str:
     token_type_to_expiration_delta = {
         JWTTokenType.access: timedelta(
             minutes=settings.access_token_expiration_time_in_minutes
@@ -30,7 +31,7 @@ def create_jwt_token(user_id: UUID, token_type: JWTTokenType, role_name: str) ->
     token_data = {
         "user_id": str(user_id),
         "token_type": token_type.name,
-        "exp": expiration_datetime,
+        "exp": int(expiration_datetime.timestamp()),
         "role_name": role_name,
     }
     encoded_jwt = jwt.encode(
@@ -47,11 +48,18 @@ def decode_jwt_token(token: str) -> JWTTokenPayload | None:
         payload = jwt.decode(
             token, settings.encoding_key, algorithms=[settings.encoding_algorithm]
         )
-        expiration_datetime = datetime.fromtimestamp(float(payload.pop("exp", 0)), tz=UTC)
-        return JWTTokenPayload(**payload, exp=expiration_datetime) if payload else None
+        if not payload:
+            return None
+        exp_timestamp = payload.pop("exp", None)
+        if exp_timestamp is None:
+            return None
+        expiration_datetime = datetime.fromtimestamp(float(exp_timestamp), tz=UTC)
+        return JWTTokenPayload(**payload, exp=expiration_datetime)
     except ExpiredSignatureError:
         raise InvalidJWTTokenException
     except JWTError:
+        raise InvalidJWTTokenException
+    except Exception:
         raise InvalidJWTTokenException
 
 
@@ -69,18 +77,27 @@ async def validate_jwt_token_payload(
 
 
 def issue_access_token_by_refresh_token(refresh_token: str) -> str:
-    payload = decode_jwt_token(refresh_token)
-    if payload is None or payload.exp < datetime.now(UTC):
-        raise InvalidJWTTokenException
     try:
-        user_id = UUID(payload.user_id)
-    except (ValueError, TypeError):
+        payload = decode_jwt_token(refresh_token)
+
+        if payload is None:
+            raise InvalidJWTTokenException
+
+        if payload.exp < datetime.now(UTC):
+            raise InvalidJWTTokenException
+
+        if payload.token_type != JWTTokenType.refresh.name:
+            raise InvalidJWTTokenException
+
+        return create_jwt_token(
+            user_id=payload.user_id,
+            token_type=JWTTokenType.access,
+            role_name=payload.role_name,
+        )
+    except InvalidJWTTokenException:
+        raise
+    except Exception:
         raise InvalidJWTTokenException
-    return create_jwt_token(
-        user_id=user_id,
-        token_type=JWTTokenType.access,
-        role_name=payload.role_name,
-    )
 
 
 def hash_password(password: str) -> str:

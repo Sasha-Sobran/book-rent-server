@@ -26,3 +26,12 @@ class CreateLibrarianRequest(BaseModel):
     role_id: int
     name: str
     phone_number: str
+
+
+class EditUserRequest(BaseModel):
+    email: str
+    password: str | None = None
+    role_id: int
+    name: str
+    surname: str
+    phone_number: str | None = None

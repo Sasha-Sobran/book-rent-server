@@ -18,10 +18,12 @@ def include_routers():
     from app.user.router import user_router
     from app.admin.router import admin_router
     from app.common.routers import common_router
+    from app.settings.router import settings_router
 
     app.include_router(user_router)
     app.include_router(admin_router)
     app.include_router(common_router)
+    app.include_router(settings_router)
 
 
 def create_tables():
