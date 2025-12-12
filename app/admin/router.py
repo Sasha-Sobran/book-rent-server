@@ -1,5 +1,5 @@
 from ast import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import SQLModel, Session
 
 from app.admin.controllers import add_user, check_email_available, delete_role, delete_user, edit_user
@@ -13,6 +13,7 @@ from app.admin.schemas import (
 from app.auth.service import hash_password
 from app.common.controllers import create_object, get_object_or_404, quick_select
 from app.common.dependencies import AdminUserDep, RootUserDep, SessionDep
+from app.admin.controllers import create_librarian
 from app.models.role import Role
 from app.models.user import User
 
@@ -108,6 +109,20 @@ async def add_user_route(new_user: User, session: SessionDep, user: AdminUserDep
     new_user.password = hash_password(new_user.password)
     await add_user(session=session, new_user=new_user)
     return {"message": "User added"}
+
+
+@admin_router.post("/create-librarian/")
+async def create_librarian_route(payload: CreateLibrarianRequest, session: SessionDep, user: AdminUserDep):
+    await check_email_available(session=session, email=payload.email)
+    role = (await quick_select(session=session, model=Role, filter_by={"name": "librarian"})).scalar_one_or_none()
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role 'librarian' not found. Seed roles first.",
+        )
+    hashed_password = hash_password(payload.password)
+    await create_librarian(session=session, data=payload, hashed_password=hashed_password, role_id=role.id)
+    return {"message": "Librarian created"}
 
 @admin_router.delete("/delete-user/{user_id}/")
 async def delete_user_route(user_id: int, session: SessionDep, user: AdminUserDep):

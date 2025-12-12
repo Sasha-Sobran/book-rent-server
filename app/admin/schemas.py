@@ -23,9 +23,10 @@ class CreateAdminRequest(BaseModel):
 class CreateLibrarianRequest(BaseModel):
     email: str
     password: str
-    role_id: int
     name: str
-    phone_number: str
+    surname: str
+    phone_number: str | None = None
+    library_id: int
 
 
 class EditUserRequest(BaseModel):

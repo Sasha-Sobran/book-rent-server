@@ -2,7 +2,7 @@ from sqlmodel import Session
 
 from app.auth.service import verify_password
 from app.auth.types import JWTTokenType
-from app.common.controllers import create_object, get_object_or_404
+from app.common.controllers import create_object, get_object_or_404, quick_select
 from app.common.dependencies import get_db_session
 from app.common.exceptions import (
     InvalidUserCredentialsException,
@@ -37,13 +37,10 @@ async def create_user(
 async def login_user(session: Session, email: str, password: str) -> UserLoginResponse:
     from app.auth.service import create_jwt_token
 
-    user = await get_object_or_404(
-        session=session,
-        model=User,
-        email=email,
-    )
+    user = (await quick_select(session=session, model=User, filter_by={"email": email})).scalar()
     if user is None:
-        raise UserDoesNotExistException(email=email)
+        raise InvalidUserCredentialsException
+
     if not verify_user_password(user, password):
         raise InvalidUserCredentialsException
     role_name = await get_object_or_404(
