@@ -1,12 +1,16 @@
 from fastapi import HTTPException, status
 from sqlmodel import Session, select, delete
+from sqlalchemy import and_, or_, func
 
+from app.common.db_utils import save_and_refresh
 from app.models.book import Book, BookCategory, BookGenre
 from app.models.category import Category
 from app.models.genre import Genre
 from app.models.library import Library
 from app.models.librarian import Librarian
 from app.books.schemas import BookCreate, BookResponse, BookUpdate
+from app.common.validators import get_or_404
+from app.common.librarian_utils import get_librarian_by_user_id
 
 
 def list_books(
@@ -20,10 +24,23 @@ def list_books(
     if library_id is not None:
         query = query.where(Book.library_id == library_id)
     if search:
-        like = f"%{search}%"
-        query = query.where((Book.title.ilike(like)) | (Book.author.ilike(like)))
+        terms = [t.strip() for t in search.replace(",", " ").split() if t.strip()]
+        if terms:
+            query = query.where(
+                and_(
+                    *[
+                        or_(
+                            Book.title.ilike(f"%{term}%"),
+                            Book.author.ilike(f"%{term}%"),
+                        )
+                        for term in terms
+                    ]
+                )
+            )
     if category_ids:
-        query = query.join(BookCategory).where(BookCategory.category_id.in_(category_ids))
+        query = query.join(BookCategory).where(
+            BookCategory.category_id.in_(category_ids)
+        )
     if genre_ids:
         query = query.join(BookGenre).where(BookGenre.genre_id.in_(genre_ids))
     books = session.exec(query).all()
@@ -39,13 +56,48 @@ def get_book(session: Session, book_id: int) -> BookResponse | None:
     return _to_response(book)
 
 
-def create_book(session: Session, data: BookCreate, librarian_user_id: int | None = None) -> BookResponse:
-    library_id = data.library_id
-    if librarian_user_id is not None:
-        librarian = session.exec(select(Librarian).where(Librarian.user_id == librarian_user_id)).scalar_one_or_none()
-        if not librarian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Current user is not a librarian")
-        library_id = librarian.library_id
+def get_popular_books(
+    session: Session, library_id: int | None = None, limit: int = 8
+) -> list[BookResponse]:
+    from app.models.rent import Rent
+
+    rent_count_subq = (
+        select(Rent.book_id, func.count(Rent.id).label("rent_count"))
+        .group_by(Rent.book_id)
+        .subquery()
+    )
+
+    query = select(Book).outerjoin(
+        rent_count_subq, Book.id == rent_count_subq.c.book_id
+    )
+
+    if library_id is not None:
+        query = query.where(Book.library_id == library_id)
+
+    query = query.order_by(rent_count_subq.c.rent_count.desc().nullslast()).limit(limit)
+
+    books = session.exec(query).all()
+
+    for book in books:
+        session.refresh(book, attribute_names=["library", "categories", "genres"])
+
+    return [_to_response(b) for b in books]
+
+
+def create_book(
+    session: Session, data: BookCreate, librarian_user_id: int | None = None
+) -> BookResponse:
+    librarian = (
+        get_librarian_by_user_id(session, librarian_user_id)
+        if librarian_user_id
+        else None
+    )
+    if not librarian:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Current user is not a librarian",
+        )
+    library_id = librarian.library_id
     _validate_library(session, library_id)
     book = Book(
         title=data.title,
@@ -55,9 +107,7 @@ def create_book(session: Session, data: BookCreate, librarian_user_id: int | Non
         quantity=data.quantity,
         library_id=library_id,
     )
-    session.add(book)
-    session.commit()
-    session.refresh(book)
+    save_and_refresh(session, book)
     _apply_relations(
         session,
         book,
@@ -66,15 +116,19 @@ def create_book(session: Session, data: BookCreate, librarian_user_id: int | Non
         new_categories=data.new_categories,
         new_genres=data.new_genres,
     )
-    session.commit()
-    session.refresh(book)
+    save_and_refresh(session, book)
     return _to_response(book)
 
 
-def update_book(session: Session, book_id: int, data: BookUpdate) -> BookResponse | None:
+def update_book(
+    session: Session, book_id: int, data: BookUpdate
+) -> BookResponse | None:
     book = session.get(Book, book_id)
     if not book:
         return None
+
+    was_unavailable = book.quantity == 0
+
     if data.library_id is not None:
         _validate_library(session, data.library_id)
         book.library_id = data.library_id
@@ -90,7 +144,12 @@ def update_book(session: Session, book_id: int, data: BookUpdate) -> BookRespons
         book.quantity = data.quantity
     if any(
         v is not None
-        for v in (data.category_ids, data.genre_ids, data.new_categories, data.new_genres)
+        for v in (
+            data.category_ids,
+            data.genre_ids,
+            data.new_categories,
+            data.new_genres,
+        )
     ):
         _apply_relations(
             session,
@@ -100,28 +159,55 @@ def update_book(session: Session, book_id: int, data: BookUpdate) -> BookRespons
             new_categories=data.new_categories,
             new_genres=data.new_genres,
         )
-    session.add(book)
-    session.commit()
-    session.refresh(book)
+    save_and_refresh(session, book)
+
+    if was_unavailable and book.quantity > 0:
+        from app.books.observer import BookAvailabilityObserver
+
+        BookAvailabilityObserver.notify_subscribers(session, book.id)
+
     return _to_response(book)
 
 
 def delete_book(session: Session, book_id: int) -> bool:
+    from pathlib import Path
+    from sqlmodel import select
+    from app.models.rent import Rent
+    from app.models.book_notification import BookNotification
+    from app.common.constants import RentStatusNames
+
     book = session.get(Book, book_id)
     if not book:
         return False
+
+    from app.models.rent_status import RentStatus
+
+    active_rents = session.exec(
+        select(Rent)
+        .join(RentStatus, Rent.status_id == RentStatus.id)
+        .where(Rent.book_id == book_id, RentStatus.name == RentStatusNames.ACTIVE)
+    ).first()
+    if active_rents:
+        raise HTTPException(
+            status_code=400, detail="Cannot delete book with active rents"
+        )
+
+    session.exec(delete(BookNotification).where(BookNotification.book_id == book_id))
+
+    if book.image_url:
+        BASE_DIR = Path(__file__).parent.parent.parent
+        filename = Path(book.image_url).name
+        image_path = BASE_DIR / "uploads" / "books" / filename
+        if image_path.exists():
+            image_path.unlink()
+
     session.delete(book)
     session.commit()
     return True
 
 
 def _validate_library(session: Session, library_id: int):
-    library = session.get(Library, library_id)
-    if library is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Library not found",
-        )
+    get_or_404(session, Library, library_id, "Library")
 
 
 def _to_response(book: Book) -> BookResponse:
@@ -136,6 +222,10 @@ def _to_response(book: Book) -> BookResponse:
         quantity=book.quantity,
         library_id=book.library_id,
         library_name=book.library.name if book.library else None,
+        library_city_name=(
+            book.library.city.name if book.library and book.library.city else None
+        ),
+        image_url=book.image_url,
         categories=categories,
         genres=genres,
     )
@@ -158,9 +248,7 @@ def _apply_relations(
         existing = session.exec(select(Category).where(Category.name == name)).first()
         if existing is None:
             cat = Category(name=name)
-            session.add(cat)
-            session.commit()
-            session.refresh(cat)
+            save_and_refresh(session, cat)
             category_ids.append(cat.id)
         else:
             category_ids.append(existing.id)
@@ -169,9 +257,7 @@ def _apply_relations(
         existing = session.exec(select(Genre).where(Genre.name == name)).first()
         if existing is None:
             gen = Genre(name=name)
-            session.add(gen)
-            session.commit()
-            session.refresh(gen)
+            save_and_refresh(session, gen)
             genre_ids.append(gen.id)
         else:
             genre_ids.append(existing.id)
@@ -190,4 +276,3 @@ def _apply_relations(
         gens = session.exec(select(Genre).where(Genre.id.in_(genre_ids))).all()
         book.genres = list(gens)
     session.add(book)
-

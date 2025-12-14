@@ -27,5 +27,5 @@ class RentResponse(BaseModel):
     deposit_price: int
     status: str
     librarian_id: int
-
-
+    penalties_amount: float = 0.0
+    total_amount: float = 0.0

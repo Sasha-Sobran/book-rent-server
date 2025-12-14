@@ -56,3 +56,8 @@ class UserProfileUpdate(BaseModel):
     phone_number: str | None = None
     email: str | None = None
     password: str | None = None
+
+
+class ReaderInfoResponse(BaseModel):
+    reader_category_name: str | None
+    total_debt: float

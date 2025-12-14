@@ -1,13 +1,24 @@
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
 
-from app.libraries.schemas import CityCreate, CityResponse, LibraryCreate, LibraryResponse
+from app.libraries.schemas import (
+    CityCreate,
+    CityResponse,
+    LibraryCreate,
+    LibraryResponse,
+)
 from app.models.city import City
 from app.models.library import Library
+from sqlalchemy import select as sa_select
 
 
 def list_libraries(session: Session) -> list[LibraryResponse]:
-    libs = session.exec(select(Library).join(City)).all()
+    libs = (
+        session.exec(sa_select(Library).options(selectinload(Library.city)))
+        .scalars()
+        .all()
+    )
     return [_to_response(l) for l in libs]
 
 
@@ -56,4 +67,3 @@ def _to_response(library: Library) -> LibraryResponse:
         address=library.address,
         phone_number=library.phone_number,
     )
-

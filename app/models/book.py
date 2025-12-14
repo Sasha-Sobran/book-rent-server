@@ -23,6 +23,7 @@ class Book(SQLModel, table=True):
     author: str
     library_id: int = Field(foreign_key="library.id")
     quantity: int
+    image_url: str | None = None
 
     library: "Library" = Relationship(back_populates="books")
     rents: list["Rent"] = Relationship(back_populates="book")

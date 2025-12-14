@@ -28,4 +28,3 @@ class ReaderResponse(BaseModel):
     reader_category_name: str | None
     user_id: int | None
     user_email: str | None
-

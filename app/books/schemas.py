@@ -7,7 +7,6 @@ class BookCreate(BaseModel):
     price: float = Field(ge=0)
     publish_year: str
     quantity: int = Field(ge=0)
-    library_id: int
     category_ids: list[int] | None = None
     genre_ids: list[int] | None = None
     new_categories: list[str] | None = None
@@ -36,6 +35,7 @@ class BookResponse(BaseModel):
     quantity: int
     library_id: int
     library_name: str | None = None
+    library_city_name: str | None = None
+    image_url: str | None = None
     categories: list[str] = []
     genres: list[str] = []
-

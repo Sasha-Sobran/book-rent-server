@@ -13,3 +13,4 @@ class User(SQLModel, table=True):
     librarians: list["Librarian"] = Relationship(back_populates="user")
     readers: list["Reader"] = Relationship(back_populates="user")
     role: "Role" = Relationship(back_populates="users")
+    event_logs: list["EventLog"] = Relationship(back_populates="user")

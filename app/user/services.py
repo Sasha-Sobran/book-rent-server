@@ -37,7 +37,9 @@ async def create_user(
 async def login_user(session: Session, email: str, password: str) -> UserLoginResponse:
     from app.auth.service import create_jwt_token
 
-    user = (await quick_select(session=session, model=User, filter_by={"email": email})).scalar()
+    user = (
+        await quick_select(session=session, model=User, filter_by={"email": email})
+    ).scalar()
     if user is None:
         raise InvalidUserCredentialsException
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
-from sqlmodel import select
 
-from app.common.dependencies import AdminUserDep, LibrarianUserDep, SessionDep, UserDep
+from app.common.dependencies import LibrarianUserDep, SessionDep, UserDep
+from app.common.librarian_utils import get_librarian_by_user_id
 from app.libraries.controllers import (
     create_city,
     create_library,
@@ -10,7 +10,6 @@ from app.libraries.controllers import (
     _to_response,
 )
 from app.libraries.schemas import CityCreate, LibraryCreate
-from app.models.librarian import Librarian
 
 libraries_router = APIRouter(prefix="/libraries", tags=["libraries"])
 
@@ -22,12 +21,14 @@ async def list_libraries_route(session: SessionDep, user: UserDep):
 
 @libraries_router.get("/me/")
 async def my_library_route(session: SessionDep, user: LibrarianUserDep):
-    result = session.exec(select(Librarian).where(Librarian.user_id == user["user_id"]))
-    librarian = result.first()
+    librarian = get_librarian_by_user_id(session, user["user_id"])
+    print(librarian)
     if not librarian:
         return None
-    if not librarian.library:
+    if librarian.library is None:
         session.refresh(librarian, attribute_names=["library"])
+    if librarian.library is None:
+        return None
     return _to_response(librarian.library)
 
 
@@ -44,4 +45,3 @@ async def list_cities_route(session: SessionDep, user: UserDep):
 @libraries_router.post("/cities/")
 async def create_city_route(data: CityCreate, session: SessionDep):
     return create_city(session, data)
-

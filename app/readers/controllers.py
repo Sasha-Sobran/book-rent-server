@@ -5,6 +5,7 @@ from app.models.reader import Reader
 from app.models.user import User
 from app.models.reader_category import ReaderCategory
 from app.readers.schemas import CreateReaderRequest, ReaderResponse, UpdateReaderRequest
+from app.common.validators import get_or_404
 
 
 def get_all_readers(session: Session) -> list[ReaderResponse]:
@@ -22,9 +23,9 @@ def get_reader_by_id(session: Session, reader_id: int) -> ReaderResponse | None:
 def search_readers(session: Session, query: str) -> list[ReaderResponse]:
     readers = session.exec(
         select(Reader).where(
-            (Reader.name.ilike(f"%{query}%")) |
-            (Reader.surname.ilike(f"%{query}%")) |
-            (Reader.phone_number.ilike(f"%{query}%"))
+            (Reader.name.ilike(f"%{query}%"))
+            | (Reader.surname.ilike(f"%{query}%"))
+            | (Reader.phone_number.ilike(f"%{query}%"))
         )
     ).all()
     return [_to_response(session, r) for r in readers]
@@ -47,7 +48,9 @@ def create_reader(session: Session, data: CreateReaderRequest) -> ReaderResponse
     return _to_response(session, reader)
 
 
-def update_reader(session: Session, reader_id: int, data: UpdateReaderRequest) -> ReaderResponse | None:
+def update_reader(
+    session: Session, reader_id: int, data: UpdateReaderRequest
+) -> ReaderResponse | None:
     reader = session.get(Reader, reader_id)
     if not reader:
         return None
@@ -69,9 +72,27 @@ def update_reader(session: Session, reader_id: int, data: UpdateReaderRequest) -
 
 
 def delete_reader(session: Session, reader_id: int) -> bool:
+    from sqlmodel import select
+    from app.models.rent import Rent
+    from app.common.constants import RentStatusNames
+    from fastapi import HTTPException
+
     reader = session.get(Reader, reader_id)
     if not reader:
         return False
+
+    from app.models.rent_status import RentStatus
+
+    active_rents = session.exec(
+        select(Rent)
+        .join(RentStatus, Rent.status_id == RentStatus.id)
+        .where(Rent.reader_id == reader_id, RentStatus.name == RentStatusNames.ACTIVE)
+    ).first()
+    if active_rents:
+        raise HTTPException(
+            status_code=400, detail="Cannot delete reader with active rents"
+        )
+
     session.delete(reader)
     session.commit()
     return True
@@ -82,7 +103,7 @@ def _to_response(session: Session, reader: Reader) -> ReaderResponse:
     if reader.user_id:
         user = session.get(User, reader.user_id)
         user_email = user.email if user else None
-    
+
     category_name = None
     if reader.reader_category:
         category_name = reader.reader_category.name
@@ -106,21 +127,10 @@ def _validate_category(session: Session, category_id: int | None):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Reader category is required",
         )
-    category = session.get(ReaderCategory, category_id)
-    if category is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Reader category not found",
-        )
+    get_or_404(session, ReaderCategory, category_id, "Reader category")
 
 
 def _validate_user(session: Session, user_id: int | None):
     if user_id is None:
         return
-    user = session.get(User, user_id)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
+    get_or_404(session, User, user_id, "User")

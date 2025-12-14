@@ -31,9 +31,15 @@ def create_genre(session: Session, name: str) -> Genre:
 
 
 def delete_genre(session: Session, genre_id: int) -> bool:
+    from sqlmodel import delete
+    from app.models.book import BookGenre
+
     genre = session.get(Genre, genre_id)
     if not genre:
         return False
+
+    session.exec(delete(BookGenre).where(BookGenre.genre_id == genre_id))
+
     session.delete(genre)
     session.commit()
     return True
@@ -48,15 +54,23 @@ def create_category(session: Session, name: str) -> Category:
 
 
 def delete_category(session: Session, category_id: int) -> bool:
+    from sqlmodel import delete
+    from app.models.book import BookCategory
+
     category = session.get(Category, category_id)
     if not category:
         return False
+
+    session.exec(delete(BookCategory).where(BookCategory.category_id == category_id))
+
     session.delete(category)
     session.commit()
     return True
 
 
-def create_reader_category(session: Session, name: str, discount_percentage: int) -> ReaderCategory:
+def create_reader_category(
+    session: Session, name: str, discount_percentage: int
+) -> ReaderCategory:
     category = ReaderCategory(name=name, discount_percentage=discount_percentage)
     session.add(category)
     session.commit()
@@ -64,7 +78,9 @@ def create_reader_category(session: Session, name: str, discount_percentage: int
     return category
 
 
-def update_reader_category(session: Session, category_id: int, name: str, discount_percentage: int) -> ReaderCategory | None:
+def update_reader_category(
+    session: Session, category_id: int, name: str, discount_percentage: int
+) -> ReaderCategory | None:
     category = session.get(ReaderCategory, category_id)
     if not category:
         return None
@@ -77,9 +93,21 @@ def update_reader_category(session: Session, category_id: int, name: str, discou
 
 
 def delete_reader_category(session: Session, category_id: int) -> bool:
+    from sqlmodel import select
+    from fastapi import HTTPException
+
     category = session.get(ReaderCategory, category_id)
     if not category:
         return False
+
+    readers_with_category = session.exec(
+        select(Reader).where(Reader.reader_category_id == category_id)
+    ).first()
+    if readers_with_category:
+        raise HTTPException(
+            status_code=400, detail="Cannot delete category with assigned readers"
+        )
+
     session.delete(category)
     session.commit()
     return True
@@ -94,10 +122,22 @@ def create_penalty_type(session: Session, name: str) -> PenaltyType:
 
 
 def delete_penalty_type(session: Session, type_id: int) -> bool:
+    from sqlmodel import select
+    from app.models.penalty import Penalty
+    from fastapi import HTTPException
+
     penalty_type = session.get(PenaltyType, type_id)
     if not penalty_type:
         return False
+
+    penalties_with_type = session.exec(
+        select(Penalty).where(Penalty.penalty_type_id == type_id)
+    ).first()
+    if penalties_with_type:
+        raise HTTPException(
+            status_code=400, detail="Cannot delete penalty type with assigned penalties"
+        )
+
     session.delete(penalty_type)
     session.commit()
     return True
-
