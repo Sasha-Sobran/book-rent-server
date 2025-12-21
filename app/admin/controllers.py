@@ -10,8 +10,7 @@ from app.models.librarian import Librarian
 from app.models.user import User
 
 ALLOWED_ROLE_ASSIGNMENTS = {
-    "root": {"admin", "librarian"},
-    "admin": {"librarian"},
+    "root": {"librarian"},
 }
 
 

@@ -45,6 +45,7 @@ def list_rents(
     reader_id: int | None = None,
     reader_user_id: int | None = None,
     status_name: str | None = None,
+    library_id: int | None = None,
 ) -> list[RentResponse]:
     query = select(Rent).options(
         selectinload(Rent.book),
@@ -56,6 +57,8 @@ def list_rents(
         query = query.where(Rent.reader_id == reader_id)
     if reader_user_id is not None:
         query = query.join(Reader).where(Reader.user_id == reader_user_id)
+    if library_id is not None:
+        query = query.join(Book).where(Book.library_id == library_id)
     librarian = (
         get_librarian_by_user_id(session, librarian_user_id)
         if librarian_user_id
@@ -89,16 +92,40 @@ def get_rent(session: Session, rent_id: int) -> RentResponse | None:
 
 
 def create_rent(
-    session: Session, data: RentCreate, librarian_user_id: int
+    session: Session, data: RentCreate, librarian_user_id: int | None = None
 ) -> RentResponse:
-    librarian = require_librarian_by_user_id(session, librarian_user_id)
     book = get_or_404(session, Book, data.book_id, "Book")
     if book.quantity <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Book is not available for rent",
         )
-    check_book_library_access(session, book, librarian)
+    
+    librarian = None
+    if librarian_user_id:
+        librarian = require_librarian_by_user_id(session, librarian_user_id)
+        check_book_library_access(session, book, librarian)
+    else:
+        from app.models.library import Library
+        from app.models.librarian import Librarian
+        library = session.get(Library, book.library_id)
+        if library:
+            librarian_result = session.exec(
+                select(Librarian).where(Librarian.library_id == library.id).limit(1)
+            ).first()
+            if not librarian_result:
+                librarian_result = session.exec(select(Librarian).limit(1)).first()
+                if not librarian_result:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="No librarians available in the system",
+                    )
+            librarian = librarian_result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Library not found for this book",
+            )
 
     reader = get_or_404(session, Reader, data.reader_id, "Reader")
 
@@ -150,14 +177,18 @@ def create_rent_order(
             phone_number=user.phone_number,
         )
         save_and_refresh(session, reader)
+    
     librarian = session.exec(
         select(Librarian).where(Librarian.library_id == book.library_id)
     ).first()
+    
     if not librarian:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No librarian for this library",
-        )
+        librarian = session.exec(select(Librarian).limit(1)).first()
+        if not librarian:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No librarians available in the system",
+            )
 
     loan_days_val = loan_days or LOAN_DAYS_DEFAULT
     if loan_days_val <= 0:
@@ -186,13 +217,18 @@ def create_rent_order(
 
 
 def return_rent(
-    session: Session, rent_id: int, librarian_user_id: int
+    session: Session, rent_id: int, librarian_user_id: int | None = None
 ) -> RentResponse | None:
-    librarian = require_librarian_by_user_id(session, librarian_user_id)
+    librarian = (
+        require_librarian_by_user_id(session, librarian_user_id)
+        if librarian_user_id
+        else None
+    )
     rent = session.get(Rent, rent_id)
     if not rent:
         return None
-    check_rent_ownership(rent, librarian.id, "close")
+    if librarian:
+        check_rent_ownership(rent, librarian.id, "close")
     if rent.return_date:
         session.refresh(rent, attribute_names=["book", "reader", "status"])
         return _to_response(rent)
@@ -239,13 +275,18 @@ def return_rent(
 
 
 def issue_rent(
-    session: Session, rent_id: int, librarian_user_id: int
+    session: Session, rent_id: int, librarian_user_id: int | None = None
 ) -> RentResponse | None:
-    librarian = require_librarian_by_user_id(session, librarian_user_id)
+    librarian = (
+        require_librarian_by_user_id(session, librarian_user_id)
+        if librarian_user_id
+        else None
+    )
     rent = session.get(Rent, rent_id)
     if not rent:
         return None
-    check_rent_ownership(rent, librarian.id, "issue")
+    if librarian:
+        check_rent_ownership(rent, librarian.id, "issue")
     if rent.status and rent.status.name != RentStatusNames.PENDING:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -269,13 +310,18 @@ def issue_rent(
 
 
 def decline_rent(
-    session: Session, rent_id: int, librarian_user_id: int
+    session: Session, rent_id: int, librarian_user_id: int | None = None
 ) -> RentResponse | None:
-    librarian = require_librarian_by_user_id(session, librarian_user_id)
+    librarian = (
+        require_librarian_by_user_id(session, librarian_user_id)
+        if librarian_user_id
+        else None
+    )
     rent = session.get(Rent, rent_id)
     if not rent:
         return None
-    check_rent_ownership(rent, librarian.id, "decline")
+    if librarian:
+        check_rent_ownership(rent, librarian.id, "decline")
     if rent.status and rent.status.name != RentStatusNames.PENDING:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

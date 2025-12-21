@@ -61,3 +61,4 @@ class UserProfileUpdate(BaseModel):
 class ReaderInfoResponse(BaseModel):
     reader_category_name: str | None
     total_debt: float
+    discount_percentage: int | None = None

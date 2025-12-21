@@ -34,6 +34,7 @@ def include_routers():
     from app.penalties.router import penalties_router
     from app.event_log.router import event_log_router
     from app.websocket.router import websocket_router
+    from app.statistics.router import statistics_router
 
     app.include_router(user_router)
     app.include_router(admin_router)
@@ -46,6 +47,7 @@ def include_routers():
     app.include_router(penalties_router)
     app.include_router(event_log_router)
     app.include_router(websocket_router)
+    app.include_router(statistics_router)
 
 
 def create_tables():

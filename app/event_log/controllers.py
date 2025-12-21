@@ -40,11 +40,19 @@ def create_event_log(
 def get_event_logs(
     session: Session,
     filters: EventLogFilters,
+    exclude_root_events: bool = False,
 ) -> tuple[list[EventLogResponse], int]:
     """Отримує список подій з фільтрацією та пагінацією"""
+    from app.models.role import Role
+    
     query = select(EventLog, User).outerjoin(User, EventLog.user_id == User.id)
 
     conditions = []
+    
+    if exclude_root_events:
+        root_role = session.exec(select(Role).where(Role.name.ilike("root"))).first()
+        if root_role:
+            conditions.append(User.role_id != root_role.id)
 
     if filters.user_id:
         conditions.append(EventLog.user_id == filters.user_id)
@@ -70,9 +78,28 @@ def get_event_logs(
     if conditions:
         query = query.where(and_(*conditions))
 
-    count_query = select(func.count()).select_from(EventLog)
-    if conditions:
-        count_query = count_query.where(and_(*conditions))
+    count_query = select(func.count()).select_from(EventLog).outerjoin(User, EventLog.user_id == User.id)
+    count_conditions = []
+    if exclude_root_events:
+        root_role = session.exec(select(Role).where(Role.name.ilike("root"))).first()
+        if root_role:
+            count_conditions.append(User.role_id != root_role.id)
+    if filters.user_id:
+        count_conditions.append(EventLog.user_id == filters.user_id)
+    if filters.action_type:
+        count_conditions.append(EventLog.action_type == filters.action_type)
+    if filters.entity_type:
+        count_conditions.append(EventLog.entity_type == filters.entity_type)
+    if filters.entity_id:
+        count_conditions.append(EventLog.entity_id == filters.entity_id)
+    if filters.date_from:
+        count_conditions.append(EventLog.timestamp >= filters.date_from)
+    if filters.date_to:
+        count_conditions.append(EventLog.timestamp <= filters.date_to)
+    if filters.search:
+        count_conditions.append(EventLog.description.ilike(f"%{filters.search}%"))
+    if count_conditions:
+        count_query = count_query.where(and_(*count_conditions))
     total_count = session.exec(count_query).one()
 
     query = query.order_by(EventLog.timestamp.desc())

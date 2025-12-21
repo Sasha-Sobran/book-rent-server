@@ -41,19 +41,9 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
 UserDep = Annotated[dict, Depends(get_current_user)]
 
 
-def require_admin(user: UserDep):
-    role = str(user.get("role_name", "")).lower()
-    if role not in ["admin", "root"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not allowed to access this resource",
-        )
-    return user
-
-
 def require_librarian(user: UserDep):
     role = str(user.get("role_name", "")).lower()
-    if role not in ["librarian", "admin", "root"]:
+    if role != "librarian":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not allowed to access this resource",
@@ -71,7 +61,17 @@ def require_root(user: UserDep):
     return user
 
 
-AdminUserDep = Annotated[dict, Depends(require_admin)]
+def require_librarian_or_root(user: UserDep):
+    role = str(user.get("role_name", "")).lower()
+    if role not in ("librarian", "root"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to access this resource",
+        )
+    return user
+
+
 LibrarianUserDep = Annotated[dict, Depends(require_librarian)]
 RootUserDep = Annotated[dict, Depends(require_root)]
+LibrarianOrRootUserDep = Annotated[dict, Depends(require_librarian_or_root)]
 SessionDep = Annotated[Session, Depends(get_db_session)]

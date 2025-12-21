@@ -25,12 +25,14 @@ async def list_rents_route(
     user: LibrarianUserDep,
     reader_id: int | None = None,
     status: str | None = None,
+    library_id: int | None = None,
 ):
     return list_rents(
         session,
         librarian_user_id=user["user_id"],
         reader_id=reader_id,
         status_name=status,
+        library_id=library_id,
     )
 
 
@@ -48,6 +50,11 @@ async def get_rent_route(rent_id: int, session: SessionDep, user: LibrarianUserD
     rent = get_rent(session, rent_id)
     if not rent:
         raise HTTPException(status_code=404, detail="Rent not found")
+    from app.common.librarian_utils import get_librarian_from_user_dict
+    from app.common.permissions import check_rent_ownership
+    librarian = get_librarian_from_user_dict(session, user)
+    if librarian:
+        check_rent_ownership(rent, librarian.id, "view")
     return rent
 
 
@@ -77,7 +84,8 @@ async def get_rent_route(rent_id: int, session: SessionDep, user: LibrarianUserD
 async def create_rent_route(
     data: RentCreate, session: SessionDep, user: LibrarianUserDep
 ):
-    return create_rent(session, data, librarian_user_id=user["user_id"])
+    librarian_user_id = user["user_id"]
+    return create_rent(session, data, librarian_user_id=librarian_user_id)
 
 
 @rents_router.post("/request/")
@@ -139,7 +147,8 @@ async def create_rent_order_route(
     ),
 )
 async def return_rent_route(rent_id: int, session: SessionDep, user: LibrarianUserDep):
-    rent = return_rent(session, rent_id, librarian_user_id=user["user_id"])
+    librarian_user_id = user["user_id"]
+    rent = return_rent(session, rent_id, librarian_user_id=librarian_user_id)
     if not rent:
         raise HTTPException(status_code=404, detail="Rent not found")
     return rent
@@ -173,7 +182,8 @@ async def return_rent_route(rent_id: int, session: SessionDep, user: LibrarianUs
     ),
 )
 async def issue_rent_route(rent_id: int, session: SessionDep, user: LibrarianUserDep):
-    rent = issue_rent(session, rent_id, librarian_user_id=user["user_id"])
+    librarian_user_id = user["user_id"]
+    rent = issue_rent(session, rent_id, librarian_user_id=librarian_user_id)
     if not rent:
         raise HTTPException(status_code=404, detail="Rent not found")
     return rent
@@ -207,7 +217,8 @@ async def issue_rent_route(rent_id: int, session: SessionDep, user: LibrarianUse
     ),
 )
 async def decline_rent_route(rent_id: int, session: SessionDep, user: LibrarianUserDep):
-    rent = decline_rent(session, rent_id, librarian_user_id=user["user_id"])
+    librarian_user_id = user["user_id"]
+    rent = decline_rent(session, rent_id, librarian_user_id=librarian_user_id)
     if not rent:
         raise HTTPException(status_code=404, detail="Rent not found")
     return rent

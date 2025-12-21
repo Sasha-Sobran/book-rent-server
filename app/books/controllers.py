@@ -21,8 +21,10 @@ def list_books(
     genre_ids: list[int] | None = None,
 ) -> list[BookResponse]:
     query = select(Book).distinct()
+    
     if library_id is not None:
         query = query.where(Book.library_id == library_id)
+    
     if search:
         terms = [t.strip() for t in search.replace(",", " ").split() if t.strip()]
         if terms:
@@ -37,12 +39,19 @@ def list_books(
                     ]
                 )
             )
+    
     if category_ids:
-        query = query.join(BookCategory).where(
+        category_subquery = select(BookCategory.book_id).where(
             BookCategory.category_id.in_(category_ids)
-        )
+        ).distinct()
+        query = query.where(Book.id.in_(category_subquery))
+    
     if genre_ids:
-        query = query.join(BookGenre).where(BookGenre.genre_id.in_(genre_ids))
+        genre_subquery = select(BookGenre.book_id).where(
+            BookGenre.genre_id.in_(genre_ids)
+        ).distinct()
+        query = query.where(Book.id.in_(genre_subquery))
+    
     books = session.exec(query).all()
     for book in books:
         session.refresh(book, attribute_names=["library", "categories", "genres"])

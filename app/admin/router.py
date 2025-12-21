@@ -11,7 +11,6 @@ from app.admin.controllers import (
     validate_assignable_role,
 )
 from app.admin.schemas import (
-    CreateAdminRequest,
     CreateLibrarianRequest,
     CreateRoleRequest,
     CreateRoleResponse,
@@ -19,7 +18,7 @@ from app.admin.schemas import (
 )
 from app.auth.service import hash_password
 from app.common.controllers import create_object, get_object_or_404, quick_select
-from app.common.dependencies import AdminUserDep, RootUserDep, SessionDep
+from app.common.dependencies import RootUserDep, SessionDep
 from app.admin.controllers import create_librarian
 from app.models.role import Role
 from app.models.user import User
@@ -46,7 +45,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
     ),
 )
 async def create_role_route(
-    role: CreateRoleRequest, session: SessionDep, user: AdminUserDep
+    role: CreateRoleRequest, session: SessionDep, user: RootUserDep
 ):
     return create_object(session, model=Role, **role.model_dump())
 
@@ -100,12 +99,30 @@ async def delete_all_tables_route(session: SessionDep):
 @admin_router.get("/get-users/")
 async def get_users_route(
     session: SessionDep,
+    user: RootUserDep,
     role_id: int | None = None,
     query: str | None = None,
 ):
     from sqlalchemy import or_
+    from app.models.role import Role
 
     filters = []
+
+    excluded_roles = (
+        (await quick_select(session=session, model=Role, filter_by={"name": "root"}))
+        .scalars()
+        .all()
+    )
+    admin_roles = (
+        (await quick_select(session=session, model=Role, filter_by={"name": "admin"}))
+        .scalars()
+        .all()
+    )
+    
+    excluded_role_ids = [role.id for role in excluded_roles + admin_roles]
+    if excluded_role_ids:
+        from sqlalchemy import not_
+        filters.append(User.role_id.notin_(excluded_role_ids))
 
     if role_id is not None:
         filters.append(User.role_id == role_id)
@@ -126,15 +143,19 @@ async def get_users_route(
     )
 
     users_with_role = []
-    for user in users:
+    for user_obj in users:
+        role_name = user_obj.role.name if user_obj.role else ""
+        if role_name.lower() in ["root", "admin"]:
+            continue
+            
         users_with_role.append(
             {
-                "id": user.id,
-                "name": user.name,
-                "surname": user.surname,
-                "email": user.email,
-                "role": user.role.name,
-                "phone_number": user.phone_number,
+                "id": user_obj.id,
+                "name": user_obj.name,
+                "surname": user_obj.surname,
+                "email": user_obj.email,
+                "role": role_name,
+                "phone_number": user_obj.phone_number,
             }
         )
     return users_with_role
@@ -158,7 +179,7 @@ async def get_users_route(
         else None
     ),
 )
-async def delete_role_route(role_id: int, session: SessionDep, user: AdminUserDep):
+async def delete_role_route(role_id: int, session: SessionDep, user: RootUserDep):
     await delete_role(session=session, role_id=role_id)
     return {"message": "Role deleted"}
 
@@ -195,7 +216,7 @@ async def delete_role_route(role_id: int, session: SessionDep, user: AdminUserDe
     ),
 )
 async def edit_user_route(
-    user_id: int, new_user: EditUserRequest, session: SessionDep, user: AdminUserDep
+    user_id: int, new_user: EditUserRequest, session: SessionDep, user: RootUserDep
 ):
     await check_email_available(
         session=session, email=new_user.email, exclude_user_id=user_id
@@ -235,7 +256,7 @@ async def edit_user_route(
         "role_id": new_user.role_id,
     },
 )
-async def add_user_route(new_user: User, session: SessionDep, user: AdminUserDep):
+async def add_user_route(new_user: User, session: SessionDep, user: RootUserDep):
     await check_email_available(session=session, email=new_user.email)
     await validate_assignable_role(session, user["role_name"], new_user.role_id)
     new_user.password = hash_password(new_user.password)
@@ -269,7 +290,7 @@ async def add_user_route(new_user: User, session: SessionDep, user: AdminUserDep
     },
 )
 async def create_librarian_route(
-    payload: CreateLibrarianRequest, session: SessionDep, user: AdminUserDep
+    payload: CreateLibrarianRequest, session: SessionDep, user: RootUserDep
 ):
     await check_email_available(session=session, email=payload.email)
     role = (
@@ -315,6 +336,6 @@ async def create_librarian_route(
         else None
     ),
 )
-async def delete_user_route(user_id: int, session: SessionDep, user: AdminUserDep):
+async def delete_user_route(user_id: int, session: SessionDep, user: RootUserDep):
     await delete_user(session=session, user_id=user_id)
     return {"message": "User deleted"}

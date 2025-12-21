@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
-from app.common.dependencies import SessionDep, LibrarianUserDep
+from app.common.dependencies import SessionDep, LibrarianUserDep, LibrarianOrRootUserDep
 from app.readers.controllers import (
     create_reader,
     delete_reader,
     get_all_readers,
     get_reader_by_id,
+    get_readers_with_active_rents,
     search_readers,
     update_reader,
 )
@@ -18,15 +19,28 @@ readers_router = APIRouter(prefix="/readers", tags=["readers"])
 
 @readers_router.get("/")
 async def get_readers_route(
-    session: SessionDep, user: LibrarianUserDep, query: str | None = None
+    session: SessionDep, user: LibrarianOrRootUserDep, query: str | None = None
 ):
     if query:
         return search_readers(session, query)
     return get_all_readers(session)
 
 
+@readers_router.get("/with-active-rents/")
+async def get_readers_with_active_rents_route(
+    session: SessionDep,
+    user: LibrarianUserDep,
+    library_id: int | None = None,
+):
+    return get_readers_with_active_rents(
+        session,
+        librarian_user_id=user["user_id"],
+        library_id=library_id,
+    )
+
+
 @readers_router.get("/{reader_id}/")
-async def get_reader_route(reader_id: int, session: SessionDep, user: LibrarianUserDep):
+async def get_reader_route(reader_id: int, session: SessionDep, user: LibrarianOrRootUserDep):
     reader = get_reader_by_id(session, reader_id)
     if not reader:
         raise HTTPException(status_code=404, detail="Reader not found")

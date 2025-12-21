@@ -13,6 +13,37 @@ def get_all_readers(session: Session) -> list[ReaderResponse]:
     return [_to_response(session, r) for r in readers]
 
 
+def get_readers_with_active_rents(session: Session, librarian_user_id: int | None = None, library_id: int | None = None) -> list[ReaderResponse]:
+    from app.models.rent import Rent
+    from app.models.rent_status import RentStatus
+    from app.models.book import Book
+    from app.common.constants import RentStatusNames
+    from app.common.librarian_utils import get_librarian_by_user_id
+    
+    query = (
+        select(Reader)
+        .join(Rent, Rent.reader_id == Reader.id)
+        .join(RentStatus, Rent.status_id == RentStatus.id)
+        .join(Book, Rent.book_id == Book.id)
+        .where(
+            RentStatus.name.in_([RentStatusNames.ACTIVE, RentStatusNames.ISSUED, RentStatusNames.OVERDUE]),
+            Rent.return_date.is_(None)
+        )
+        .distinct()
+    )
+    
+    if librarian_user_id:
+        librarian = get_librarian_by_user_id(session, librarian_user_id)
+        if librarian:
+            query = query.where(Book.library_id == librarian.library_id)
+    
+    if library_id:
+        query = query.where(Book.library_id == library_id)
+    
+    readers = session.exec(query).all()
+    return [_to_response(session, r) for r in readers]
+
+
 def get_reader_by_id(session: Session, reader_id: int) -> ReaderResponse | None:
     reader = session.get(Reader, reader_id)
     if not reader:

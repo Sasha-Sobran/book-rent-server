@@ -240,13 +240,15 @@ async def get_reader_info_route(session: SessionDep, user: UserDep):
     ).first()
 
     if not reader:
-        return ReaderInfoResponse(reader_category_name=None, total_debt=0.0)
+        return ReaderInfoResponse(reader_category_name=None, total_debt=0.0, discount_percentage=None)
 
     reader_category_name = None
+    discount_percentage = None
     if reader.reader_category_id:
         category = session.get(ReaderCategory, reader.reader_category_id)
         if category:
             reader_category_name = category.name
+            discount_percentage = category.discount_percentage
 
     from app.rents.utils import calculate_total_debt_for_rents
 
@@ -255,7 +257,9 @@ async def get_reader_info_route(session: SessionDep, user: UserDep):
     total_debt = calculate_total_debt_for_rents(session, all_rents)
 
     return ReaderInfoResponse(
-        reader_category_name=reader_category_name, total_debt=total_debt
+        reader_category_name=reader_category_name,
+        total_debt=total_debt,
+        discount_percentage=discount_percentage,
     )
 
 

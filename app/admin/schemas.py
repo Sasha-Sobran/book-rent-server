@@ -12,14 +12,6 @@ class CreateRoleResponse(BaseModel):
     name: str
 
 
-class CreateAdminRequest(BaseModel):
-    email: str
-    password: str
-    role_id: int
-    name: str
-    phone_number: str
-
-
 class CreateLibrarianRequest(BaseModel):
     email: str
     password: str

@@ -18,7 +18,7 @@ from app.books.notifications_controller import (
     unsubscribe,
 )
 from app.books.schemas import BookCreate, BookUpdate
-from app.common.dependencies import LibrarianUserDep, SessionDep, UserDep
+from app.common.dependencies import RootUserDep, LibrarianUserDep, SessionDep, UserDep
 from app.common.permissions import check_book_library_access
 from app.common.librarian_utils import get_librarian_from_user_dict
 from app.models.book import Book
@@ -33,8 +33,8 @@ async def list_books_route(
     user: UserDep,
     library_id: int | None = None,
     search: str | None = None,
-    category_ids: list[int] | None = Query(default=None),
-    genre_ids: list[int] | None = Query(default=None),
+    category_ids: str | None = Query(default=None),
+    genre_ids: str | None = Query(default=None),
 ):
     parsed_category_ids = _parse_ids(category_ids)
     parsed_genre_ids = _parse_ids(genre_ids)
@@ -48,17 +48,14 @@ async def list_books_route(
     )
 
 
-def _parse_ids(values: list[int] | list[str] | None) -> list[int] | None:
-    if values is None:
+def _parse_ids(value: str | None) -> list[int] | None:
+    if value is None or not value.strip():
         return None
-    if len(values) == 1 and isinstance(values[0], str) and "," in values[0]:
-        try:
-            return [int(v) for v in values[0].split(",") if v.strip()]
-        except ValueError:
-            return None
     try:
-        return [int(v) for v in values]
-    except (TypeError, ValueError):
+        if isinstance(value, str):
+            return [int(v.strip()) for v in value.split(",") if v.strip()]
+        return None
+    except (ValueError, TypeError):
         return None
 
 
@@ -103,10 +100,7 @@ async def get_book_route(book_id: int, session: SessionDep, user: UserDep):
 async def create_book_route(
     data: BookCreate, session: SessionDep, user: LibrarianUserDep
 ):
-    librarian_user_id = (
-        user["user_id"] if user.get("role_name") == "librarian" else None
-    )
-    return create_book(session, data, librarian_user_id=librarian_user_id)
+    return create_book(session, data, librarian_user_id=user["user_id"])
 
 
 @books_router.put("/{book_id}/")
@@ -193,7 +187,7 @@ BASE_DIR = Path(__file__).parent.parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads" / "books"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
 
 @books_router.post("/{book_id}/upload-image")

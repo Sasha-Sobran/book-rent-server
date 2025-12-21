@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.common.dependencies import AdminUserDep, SessionDep
+from app.common.dependencies import RootUserDep, SessionDep
 from app.settings.controllers import (
     create_category,
     create_genre,
@@ -24,12 +24,12 @@ settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @settings_router.get("/reader-categories/")
-async def get_reader_categories_route(session: SessionDep, user: AdminUserDep):
+async def get_reader_categories_route(session: SessionDep, user: RootUserDep):
     return get_reader_categories(session)
 
 
 @settings_router.get("/penalty-types/")
-async def get_penalty_types_route(session: SessionDep, user: AdminUserDep):
+async def get_penalty_types_route(session: SessionDep, user: RootUserDep):
     return get_penalty_types(session)
 
 
@@ -49,7 +49,7 @@ async def get_penalty_types_route(session: SessionDep, user: AdminUserDep):
         else None
     ),
 )
-async def create_genre_route(name: str, session: SessionDep, user: AdminUserDep):
+async def create_genre_route(name: str, session: SessionDep, user: RootUserDep):
     return create_genre(session, name)
 
 
@@ -71,7 +71,7 @@ async def create_genre_route(name: str, session: SessionDep, user: AdminUserDep)
         else None
     ),
 )
-async def delete_genre_route(genre_id: int, session: SessionDep, user: AdminUserDep):
+async def delete_genre_route(genre_id: int, session: SessionDep, user: RootUserDep):
     if not delete_genre(session, genre_id):
         raise HTTPException(status_code=404, detail="Genre not found")
     return {"message": "Genre deleted"}
@@ -93,7 +93,7 @@ async def delete_genre_route(genre_id: int, session: SessionDep, user: AdminUser
         else None
     ),
 )
-async def create_category_route(name: str, session: SessionDep, user: AdminUserDep):
+async def create_category_route(name: str, session: SessionDep, user: RootUserDep):
     return create_category(session, name)
 
 
@@ -116,7 +116,7 @@ async def create_category_route(name: str, session: SessionDep, user: AdminUserD
     ),
 )
 async def delete_category_route(
-    category_id: int, session: SessionDep, user: AdminUserDep
+    category_id: int, session: SessionDep, user: RootUserDep
 ):
     if not delete_category(session, category_id):
         raise HTTPException(status_code=404, detail="Category not found")
@@ -141,7 +141,7 @@ async def delete_category_route(
     ),
 )
 async def create_reader_category_route(
-    name: str, discount_percentage: int, session: SessionDep, user: AdminUserDep
+    name: str, discount_percentage: int, session: SessionDep, user: RootUserDep
 ):
     return create_reader_category(session, name, discount_percentage)
 
@@ -180,7 +180,7 @@ async def update_reader_category_route(
     name: str,
     discount_percentage: int,
     session: SessionDep,
-    user: AdminUserDep,
+    user: RootUserDep,
 ):
     result = update_reader_category(session, category_id, name, discount_percentage)
     if not result:
@@ -208,7 +208,7 @@ async def update_reader_category_route(
     ),
 )
 async def delete_reader_category_route(
-    category_id: int, session: SessionDep, user: AdminUserDep
+    category_id: int, session: SessionDep, user: RootUserDep
 ):
     if not delete_reader_category(session, category_id):
         raise HTTPException(status_code=404, detail="Category not found")
@@ -231,7 +231,7 @@ async def delete_reader_category_route(
         else None
     ),
 )
-async def create_penalty_type_route(name: str, session: SessionDep, user: AdminUserDep):
+async def create_penalty_type_route(name: str, session: SessionDep, user: RootUserDep):
     return create_penalty_type(session, name)
 
 
@@ -254,7 +254,7 @@ async def create_penalty_type_route(name: str, session: SessionDep, user: AdminU
     ),
 )
 async def delete_penalty_type_route(
-    type_id: int, session: SessionDep, user: AdminUserDep
+    type_id: int, session: SessionDep, user: RootUserDep
 ):
     if not delete_penalty_type(session, type_id):
         raise HTTPException(status_code=404, detail="Penalty type not found")
